@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Layout */
+.layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.sidebar {
+  position: sticky;
+  top: 1rem;
+  height: calc(100vh - 2rem);
+  overflow: auto;
+}
+
+.content {
+  min-width: 0;
+}
+
+/* TOC */
+.toc {
+  font-size: 0.95rem;
+  line-height: 1.35;
+  border-left: 3px solid #e5e7eb;
+  padding-left: 0.75rem;
+}
+
+.toc-title {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.toc ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.toc li {
+  margin: 0.25rem 0;
+}
+
+.toc li.l3 {
+  padding-left: 0.5rem;
+}
+
+.toc li.l4 {
+  padding-left: 1rem;
+}
+
+.toc a {
+  text-decoration: none;
+  color: #334155;
+}
+
+.toc a:hover {
+  text-decoration: underline;
+}
+
+/* Prose tweaks */
+.prose {
+  max-width: 80ch;
+}
+
+.prose h1,
+.prose h2,
+.prose h3,
+.prose h4 {
+  scroll-margin-top: 6rem;
+  position: relative;
+}
+
+.heading-anchor {
+  position: absolute;
+  left: -1.25rem;
+  opacity: 0;
+  text-decoration: none;
+}
+
+.prose h1:hover .heading-anchor,
+.prose h2:hover .heading-anchor,
+.prose h3:hover .heading-anchor,
+.prose h4:hover .heading-anchor {
+  opacity: 0.6;
+}
+
+@media (max-width: 1024px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    order: -1;
+    margin-bottom: 1rem;
+  }
+}
