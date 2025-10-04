@@ -1,6 +1,7 @@
 import React from "react";
 import { TOC } from "@/components/TOC";
 import { HeadingsProvider } from "@/components/HeadingsContext";
+import { DarkModeToggle } from "@/components/ThemeContext";
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
@@ -9,7 +10,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         <aside className="sidebar">
           <TOC />
         </aside>
-        <main className="content">{children}</main>
+        <main className="content">
+          <div className="content-toolbar">
+            <DarkModeToggle />
+          </div>
+          {children}
+        </main>
       </div>
     </HeadingsProvider>
   );

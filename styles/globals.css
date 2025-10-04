@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+body {
+  background-color: #f8fafc;
+  color: #0f172a;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
 /* Layout */
 .layout {
   display: grid;
@@ -21,6 +32,37 @@
 
 .content {
   min-width: 0;
+}
+
+.content-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1.5rem;
+}
+
+.dark-toggle {
+  background-color: #e2e8f0;
+  color: #0f172a;
+  border: 1px solid #cbd5f5;
+  border-radius: 9999px;
+  font-size: 0.9rem;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.dark-toggle:hover {
+  background-color: #dbeafe;
+}
+
+.dark .dark-toggle {
+  background-color: #1f2937;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+.dark .dark-toggle:hover {
+  background-color: #0f172a;
 }
 
 /* TOC */
@@ -63,6 +105,22 @@
   text-decoration: underline;
 }
 
+.dark .layout {
+  color: #e2e8f0;
+}
+
+.dark .toc {
+  border-left-color: #475569;
+}
+
+.dark .toc a {
+  color: #cbd5f5;
+}
+
+.dark .toc a:hover {
+  color: #ffffff;
+}
+
 /* Prose tweaks */
 .prose {
   max-width: 80ch;
@@ -88,6 +146,31 @@
 .prose h3:hover .heading-anchor,
 .prose h4:hover .heading-anchor {
   opacity: 0.6;
+}
+
+.dark .prose {
+  color: #e2e8f0;
+}
+
+.dark .prose h1,
+.dark .prose h2,
+.dark .prose h3,
+.dark .prose h4,
+.dark .prose h5,
+.dark .prose h6 {
+  color: inherit;
+}
+
+.dark .heading-anchor {
+  color: #94a3b8;
+}
+
+.dark .prose a {
+  color: #93c5fd;
+}
+
+.dark .prose a:hover {
+  color: #bfdbfe;
 }
 
 @media (max-width: 1024px) {
