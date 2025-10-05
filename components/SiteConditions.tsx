@@ -22,7 +22,6 @@ const LS_KEY = "tvr-site-conditions-cache-v1";
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
-
 function makeDefault(site: number): Entry {
   return {
     site,
@@ -36,7 +35,6 @@ function makeDefault(site: number): Entry {
     verifiedBy: "",
   };
 }
-
 function loadCache(): Record<number, Entry> {
   try {
     const raw = localStorage.getItem(LS_KEY);
@@ -61,7 +59,6 @@ async function apiGet(site: number): Promise<Entry | null> {
   const json = await res.json();
   return json?.data ?? null;
 }
-
 async function apiPut(payload: Entry): Promise<Entry> {
   const res = await fetch(`/api/site-conditions`, {
     method: "PUT",
@@ -72,6 +69,12 @@ async function apiPut(payload: Entry): Promise<Entry> {
   const json = await res.json();
   return json?.data as Entry;
 }
+async function apiGetAll(): Promise<Entry[]> {
+  const res = await fetch(`/api/site-conditions-all`);
+  if (!res.ok) throw new Error("ALL failed");
+  const json = await res.json();
+  return (json?.data ?? []) as Entry[];
+}
 
 export default function SiteConditions() {
   const [verifiedByGlobal, setVerifiedByGlobal] = useState<string>("");
@@ -81,16 +84,43 @@ export default function SiteConditions() {
   const [loading, setLoading] = useState(false);
   const [offline, setOffline] = useState(false);
 
-  // cache in memory (mirrors localStorage) for quick merges
+  // All-sites view
+const [allRows, setAllRows] = useState<Entry[]>([]);
+const [allLoading, setAllLoading] = useState(false);
+const [search, setSearch] = useState("");
+const [statusFilter, setStatusFilter] = useState<"" | Status>("");
+const [showTodayOnly, setShowTodayOnly] = useState(false); // NEW
+
+const today = useMemo(() => todayStr(), []);
+
+  // cache in memory (mirrors localStorage)
   const cacheRef = useRef<Record<number, Entry>>({});
 
-  // load local cache once
+  // Load cache once
   useEffect(() => {
     if (typeof window === "undefined") return;
     cacheRef.current = loadCache();
   }, []);
 
-  // when site changes, fetch from API; fall back to cache or default
+  // Load all rows (initial + refresh helper)
+  async function refreshAll() {
+    setAllLoading(true);
+    try {
+      const rows = await apiGetAll();
+      setAllRows(rows);
+    } catch {
+      // If offline, render cached rows for known sites
+      const cachedRows = SITE_RANGE.map((s) => cacheRef.current[s]).filter(Boolean) as Entry[];
+      setAllRows(cachedRows);
+    } finally {
+      setAllLoading(false);
+    }
+  }
+  useEffect(() => {
+    refreshAll();
+  }, []);
+
+  // When site changes → fetch
   useEffect(() => {
     (async () => {
       if (!selectedSite) {
@@ -104,16 +134,13 @@ export default function SiteConditions() {
         setOffline(false);
         if (row) {
           setEntry(row);
-          // update cache copy
           cacheRef.current[site] = row;
           saveCache(cacheRef.current);
         } else {
-          // nothing in DB → fallback to cache → else default
           const cached = cacheRef.current[site];
           setEntry(cached ?? makeDefault(site));
         }
       } catch {
-        // offline or API error: fallback
         setOffline(true);
         const cached = cacheRef.current[site];
         setEntry(cached ?? makeDefault(site));
@@ -123,31 +150,32 @@ export default function SiteConditions() {
     })();
   }, [selectedSite]);
 
-  // simple flash for “Saved”
+  // Saved flash
   function flashSaved() {
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 900);
   }
 
-  // optimistic save helper (autosave + verify button both use this)
+  // Save helper (optimistic)
   async function save(next: Entry) {
     setEntry(next);
-    // update cache immediately
     cacheRef.current[next.site] = next;
     saveCache(cacheRef.current);
 
     try {
       const saved = await apiPut(next);
       setOffline(false);
-      // sync back from server (e.g., if it normalized dates)
       setEntry(saved);
       cacheRef.current[saved.site] = saved;
       saveCache(cacheRef.current);
       flashSaved();
+      // refresh list below
+      refreshAll();
     } catch {
-      // keep local cache; mark offline so the user knows DB didn’t get it (we can add a badge)
       setOffline(true);
-      flashSaved(); // still show saved (local)
+      flashSaved();
+      // still refresh (list shows cached if offline)
+      refreshAll();
     }
   }
 
@@ -156,14 +184,63 @@ export default function SiteConditions() {
     [verifiedByGlobal, selectedSite]
   );
 
+  // --- UI helpers for list ---
+  const cols: { key: keyof Entry; label: string }[] = [
+    { key: "picnicTable", label: "Picnic" },
+    { key: "fireRing", label: "Fire" },
+    { key: "slab", label: "Slab" },
+    { key: "grassSprinklers", label: "Grass/Sprinklers" },
+    { key: "utilities", label: "Utilities" },
+  ];
+  function badgeClass(v: string) {
+    if (v === "Damaged") return "bg-red-50 text-red-700 border-red-200";
+    if (v === "Existing Issues") return "bg-amber-50 text-amber-700 border-amber-200";
+    return "bg-green-50 text-green-700 border-green-200";
+  }
+const filteredRows = useMemo(() => {
+  let rows = allRows.slice();
+
+  // search
+  const q = search.trim().toLowerCase();
+  if (q) {
+    rows = rows.filter((r) =>
+      String(r.site).includes(q) ||
+      (r.notes || "").toLowerCase().includes(q) ||
+      (r.verifiedBy || "").toLowerCase().includes(q)
+    );
+  }
+
+  // status filter
+  if (statusFilter) {
+    rows = rows.filter(
+      (r) =>
+        r.picnicTable === statusFilter ||
+        r.fireRing === statusFilter ||
+        r.slab === statusFilter ||
+        r.grassSprinklers === statusFilter ||
+        r.utilities === statusFilter
+    );
+  }
+
+  // today-only filter (NEW)
+  if (showTodayOnly) {
+    rows = rows.filter((r) => r.verifiedDate === today);
+  }
+
+  return rows;
+}, [allRows, search, statusFilter, showTodayOnly, today]);
+
+const todayCount = useMemo(
+  () => allRows.reduce((acc, r) => acc + (r.verifiedDate === today ? 1 : 0), 0),
+  [allRows, today]
+);
+
   return (
     <section className="mx-auto max-w-4xl px-4 py-8">
       {/* Header */}
       <header className="mb-6 rounded-xl border border-[#d6d3cd] bg-white/70 backdrop-blur-sm px-4 py-3 shadow-sm">
         <h1 className="text-xl md:text-2xl font-semibold tracking-tight">Site Condition</h1>
-        <p className="text-sm text-[#475569] mt-0.5">
-          Choose a verifier and site, then update statuses or tap Verify.
-        </p>
+        <p className="text-sm text-[#475569] mt-0.5">Choose a verifier and site, then update statuses or tap Verify.</p>
       </header>
 
       {/* Global controls */}
@@ -208,11 +285,11 @@ export default function SiteConditions() {
         {offline && <span className="text-amber-600">Offline (saved locally)</span>}
       </div>
 
+      {/* Editor card */}
       {!entry ? (
         <div className="text-[#475569]">Choose a site to begin.</div>
       ) : (
         <div className="relative overflow-hidden rounded-2xl border border-[#d6d3cd] bg-white shadow-sm">
-          {/* Card header */}
           <div className="flex items-center justify-between gap-4 bg-gradient-to-r from-[#f4f0e8] to-white px-4 py-3 border-b border-[#e7e4de]">
             <div className="flex items-center gap-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-[#d6d3cd] bg-white px-3 py-1 text-sm">
@@ -233,7 +310,7 @@ export default function SiteConditions() {
                     verifiedBy: verifiedByGlobal || entry.verifiedBy,
                   })
                 }
-                disabled={!canVerify}
+                disabled={!verifiedByGlobal || !selectedSite}
                 className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-[#282525] text-[#f4f0e8] hover:bg-[#3a3737] transition disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Set today's date and update Verified By"
               >
@@ -243,34 +320,13 @@ export default function SiteConditions() {
             </div>
           </div>
 
-          {/* Card body */}
           <div className="grid gap-6 p-4">
             <div className="grid gap-3 md:grid-cols-2">
-              <StatusSelect
-                label="Picnic Table"
-                value={entry.picnicTable}
-                onChange={(v) => save({ ...entry, picnicTable: v })}
-              />
-              <StatusSelect
-                label="Fire Ring"
-                value={entry.fireRing}
-                onChange={(v) => save({ ...entry, fireRing: v })}
-              />
-              <StatusSelect
-                label="Slab"
-                value={entry.slab}
-                onChange={(v) => save({ ...entry, slab: v })}
-              />
-              <StatusSelect
-                label="Grass & Sprinklers"
-                value={entry.grassSprinklers}
-                onChange={(v) => save({ ...entry, grassSprinklers: v })}
-              />
-              <StatusSelect
-                label="Utilities"
-                value={entry.utilities}
-                onChange={(v) => save({ ...entry, utilities: v })}
-              />
+              <StatusSelect label="Picnic Table" value={entry.picnicTable} onChange={(v) => save({ ...entry, picnicTable: v })} />
+              <StatusSelect label="Fire Ring" value={entry.fireRing} onChange={(v) => save({ ...entry, fireRing: v })} />
+              <StatusSelect label="Slab" value={entry.slab} onChange={(v) => save({ ...entry, slab: v })} />
+              <StatusSelect label="Grass & Sprinklers" value={entry.grassSprinklers} onChange={(v) => save({ ...entry, grassSprinklers: v })} />
+              <StatusSelect label="Utilities" value={entry.utilities} onChange={(v) => save({ ...entry, utilities: v })} />
             </div>
 
             <label className="grid gap-1">
@@ -293,13 +349,109 @@ export default function SiteConditions() {
                 onBlur={(e) => save({ ...entry, verifiedDate: e.target.value })}
                 placeholder={todayStr()}
               />
-              <p className="text-xs text-[#64748b]">
-                Tap <span className="font-medium">Verify</span> to set to today and apply the global verifier.
-              </p>
+              <p className="text-xs text-[#64748b]">Tap <span className="font-medium">Verify</span> to set to today and apply the global verifier.</p>
             </div>
           </div>
         </div>
       )}
+
+      {/* --- All Sites List ------------------------------------------------- */}
+      <div className="mt-8 rounded-2xl border border-[#d6d3cd] bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 border-b border-[#e7e4de] bg-gradient-to-r from-white to-[#f9f7f2]">
+          <h2 className="text-base font-semibold flex items-center gap-2">
+            All Sites
+            <span className="text-xs font-medium text-[#475569]">
+                Today: {todayCount}
+            </span>
+            </h2>
+          <button
+            type="button"
+            onClick={() => setShowTodayOnly(v => !v)}
+            className={`border rounded-lg px-3 py-2 transition ${
+            showTodayOnly
+            ? "bg-[#282525] text-[#f4f0e8] border-[#282525]"
+            : "border-[#d6d3cd] text-[#282525] hover:bg-[#c4c0b0]/20"
+            }`}
+            title="Show only sites verified today"
+            >
+            {showTodayOnly ? "Showing: Verified Today" : "Only Today"}
+            </button>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              className="border rounded-lg px-3 py-2 bg-white text-[#0f172a] border-[#d6d3cd] focus:outline-none focus:ring-2 focus:ring-[#c4c0b0]/60"
+              placeholder="Search site #, notes, verified by…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <select
+              className="border rounded-lg px-3 py-2 bg-white text-[#0f172a] border-[#d6d3cd] focus:outline-none focus:ring-2 focus:ring-[#c4c0b0]/60"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter((e.target.value || "") as any)}
+            >
+              <option value="">All statuses</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={refreshAll}
+              className="border rounded-lg px-3 py-2 border-[#d6d3cd] text-[#282525] hover:bg-[#c4c0b0]/20 transition"
+            >
+              {allLoading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-[#f4f0e8] text-[#282525]">
+              <tr className="[&>th]:px-3 [&>th]:py-2 [&>th]:text-left">
+                <th>Site</th>
+                {cols.map((c) => (
+                  <th key={c.key}>{c.label}</th>
+                ))}
+                <th>Verified</th>
+                <th>By</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((r) => (
+                <tr key={r.site} className="border-t border-[#f0ede6] hover:bg-[#faf9f6]">
+                  <td className="px-3 py-2 font-medium">{r.site}</td>
+                  {cols.map((c) => {
+                    const val = r[c.key] as string;
+                    return (
+                      <td key={c.key} className="px-3 py-2">
+                        <span className={`inline-block rounded-full border px-2 py-0.5 ${badgeClass(val)}`}>{val}</span>
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-2">{r.verifiedDate || "—"}</td>
+                  <td className="px-3 py-2">{r.verifiedBy || "—"}</td>
+                  <td className="px-3 py-2 max-w-[28rem] truncate" title={r.notes}>
+                    {r.notes || "—"}
+                  </td>
+                </tr>
+              ))}
+
+              {filteredRows.length === 0 && (
+                <tr>
+                  <td colSpan={cols.length + 4} className="px-3 py-6 text-center text-[#64748b]">
+                    {allLoading ? "Loading…" : "No rows match your filters."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {/* -------------------------------------------------------------------- */}
     </section>
   );
 }
