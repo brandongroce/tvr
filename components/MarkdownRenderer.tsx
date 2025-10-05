@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, JSX } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useHeadings } from "@/components/HeadingsContext";

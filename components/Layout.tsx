@@ -1,21 +1,21 @@
 import React from "react";
 import { TOC } from "@/components/TOC";
 import { HeadingsProvider } from "@/components/HeadingsContext";
-import { DarkModeToggle } from "@/components/ThemeContext";
+import { Header } from "@/components/Header";
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <HeadingsProvider>
-      <div className="layout">
-        <aside className="sidebar">
-          <TOC />
-        </aside>
-        <main className="content">
-          <div className="content-toolbar">
-            <DarkModeToggle />
+      <div className="layout-shell">
+        <Header />
+        <div className="layout">
+          <div className="sidebar-wrapper">
+            <aside className="sidebar">
+              <TOC />
+            </aside>
           </div>
-          {children}
-        </main>
+          <main className="content">{children}</main>
+        </div>
       </div>
     </HeadingsProvider>
   );
